@@ -12,22 +12,28 @@ Render multi-part OpenSCAD files from a single command
 
 Run
 
-> `npm install -g scadr`
+```shell
+npm install -g scadr
+```
 
 ## Usage & Setup
 
 ### Syntax
 
-> `scadr [options] path`
+```shell
+scadr [options] path
+```
 
 ### Example
 
-> `scadr my-file.scad`
+```shell
+scadr my-file.scad
+```
 
 Renders the top-level modules of `my-file.scad` to individual `.stl` files.
 
 For example, if `my-file.scad` contained
-```
+```scad
 module ball() {
     sphere(r = 3);
 }
@@ -52,11 +58,11 @@ Options:
   -l, --list               list modules without rendering
   --dry                    dry run (show what would happen)
   -h, --help               display help for command
-  ```
+```
 
 ### `--define n=v`
 
-```
+```shell
 scadr my-file.scad --define $fn=180 --define qual="high"
 ```
 
@@ -65,7 +71,7 @@ Defines a variable. Multiple definitions can be provided.
 ### `--module name`
 
 Defines a module that should be rendered. Multiple modules can be provided
-```
+```shell
 scadr demo.scad --module Alpha --module Beta
 ```
 If no modules are provided, the list of modules to render is determined by `convention` (see below).
