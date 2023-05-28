@@ -95,3 +95,9 @@ Prints out which modules in this file would be rendered (as determined by `conve
 ### `--dry`
 
 Prints out what would happen, but doesn't actually do it
+
+## Changelog
+
+#### 0.1.0
+
+First release
