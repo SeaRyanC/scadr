@@ -1,0 +1,35 @@
+{
+  "name": "scadr",
+  "version": "0.0.1",
+  "description": "Render multi-part OpenSCAD files to STL",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "bin": {
+    "scadr": "./lib/cli.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SeaRyanC/scadr.git"
+  },
+  "keywords": [
+    "stl",
+    "3d",
+    "3dprinting",
+    "openscad"
+  ],
+  "author": "",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/SeaRyanC/scadr/issues"
+  },
+  "homepage": "https://github.com/SeaRyanC/scadr#readme",
+  "dependencies": {
+    "commander": "^10.0.1",
+    "tmp": "^0.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.2.5",
+    "@types/tmp": "^0.2.3"
+  }
+}
