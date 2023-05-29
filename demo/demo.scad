@@ -1,34 +1,29 @@
-$fn = 360;
-// Use a 'demo' module (name doesn't matter)
+// Use high-quality rendering when running from scadr
+$fn = 180;
+
+// Use a 'demo' module (naming doesn't matter)
 // for previewing / development
 demo();
 module demo() {
-    $fn = 20;
-    
-    Alpha();
+    // use low-quality rendering for development purposes
+    $fn = undef;
+    $fa = 15;
+    $fs = 1;
 
-    translate([10, 0, 0])
-    Beta();
-
-    translate([20, 0, 0])
-    Gamma();
+    translate([10, 0, 0]) {
+        Ball();
+    }
+    Box();
 }
 
-// Top-level modules start with a capital letter are rendered.
-// This will produce demo-Alpha.stl
-module Alpha() {
-    linear_extrude(4) 
-    text("A");
+// Top-level modules starting with a capital letter are rendered to STL
+
+// This will produce demo-Ball.stl
+module Ball() {
+    sphere(d = 5);
 }
 
-// This will produce demo-Beta.stl
-module Beta() {
-    linear_extrude(4) 
-    text("B");
-}
-
-// This will produce demo-Gamma.stl
-module Gamma() {
-    linear_extrude(4) 
-    text("C");
+// This will produce demo-Box.stl
+module Box() {
+    cube([5, 5, 5], center = true);
 }
