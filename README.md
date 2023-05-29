@@ -2,7 +2,7 @@
 
 Quickly render multiple high-quality `.stl` files from a single OpenSCAD source
 
-## Introduction / Demo
+## Introduction
 
 OpenSCAD files can contain many self-contained subparts, typically modelled with the `module` construct:
 
@@ -93,8 +93,6 @@ module preview() {
 
 ### Installing
 
-Run
-
 ```shell
 npm install -g scadr
 ```
@@ -178,6 +176,16 @@ Prints out which modules in this file would be rendered (as determined by `conve
 ### `--dry`
 
 Prints out what would happen, but doesn't actually do it
+
+## Troubleshooting
+
+### Error "Unable to find OpenSCAD"
+
+> Unable to find OpenSCAD; set OPENSCADPATH environment variable
+
+`scadr` tries to automatically find where OpenSCAD's executable is located.
+If this process fails, please [log a bug](https://github.com/SeaRyanC/scadr/issues/new) describing your system configuration (operating system and the actual location of OpenSCAD).
+To workaround, set the `OPENSCADPATH` environment variable to the OpenSCAD entry point file.
 
 ## Changelog
 
