@@ -12,6 +12,8 @@ const execFile = util.promisify(child_process.execFile);
 interface Options {
     list: boolean;
     defines: string[];
+    beep: boolean;
+    dry: boolean;
 }
 
 const conventions = {
@@ -27,18 +29,24 @@ program
     .addOption(new commander.Option('-c, --convention <kind>', 'top-level naming convention').choices(['auto', ...Object.keys(conventions)]).default("auto"))
     .option('-l, --list', `list modules without rendering`)
     .option('--dry', `dry run (show what would happen)`)
+    .option('-b, --beep', `chime when completed`)
     .argument("<path>", `.scad file to render`)
     .action(main);
 program.parse();
 
 function main(filePath: string, options: Options) {
-    asyncMain(filePath, options).then(() => { });
+    asyncMain(filePath, options).then(() => {
+        if (options['beep']) {
+            console.log('\x07');
+        }
+    });
 }
 
 async function asyncMain(filePath: string, options: any) {
     const fullPath = path.resolve(filePath);
     const ospath = await findOpenScad();
     const tasks: Promise<any>[] = [];
+    let dotCount = 0;
     if (options.list) {
         console.log("Discovered modules:");
         for (const p of await getPartsToRender()) {
@@ -46,13 +54,49 @@ async function asyncMain(filePath: string, options: any) {
         }
         return;
     }
-
+    const taskStatus: [name: string, done: boolean][] = [];
     const parts = options.module.length ? options.module : await getPartsToRender();
-    for (const p of parts) {
-        tasks.push(processModule(p));
+
+    return new Promise<void>(done => {
+        let timeoutToken: ReturnType<typeof setTimeout>;
+
+        for (const p of parts) {
+            const target: [string, boolean] = [p, false];
+            taskStatus.push(target);
+            processModule(p).then(() => {
+                target[1] = true;
+                clearTimeout(timeoutToken);
+                recalc();
+            });
+        }
+        printStatus(false);
+
+        timeoutToken = setTimeout(recalc, 750);
+
+        function recalc() {
+            dotCount = (dotCount + 1) % 4;
+            const allDone = printStatus(true);
+            if (allDone) {
+                done();
+            } else {
+                timeoutToken = setTimeout(recalc, 750);
+            }
+        }
+    });
+
+    function printStatus(cls: boolean) {
+        const dots = ["", ".", "..", "..."];
+        if (cls) {
+            process.stdout.moveCursor(0, -taskStatus.length);
+        }
+        let allDone = true;
+        for (const t of taskStatus) {
+            process.stdout.clearLine(1);
+            console.log(`${t[0]}\t${t[1] ? "Done" : "Working" + dots[dotCount]}`);
+            allDone = allDone && t[1];
+        }
+        return allDone;
     }
-    for (const p of tasks) await p;
-    console.log(`Done!`);
 
     async function getPartsToRender(): Promise<string[]> {
         const fileContent = await fs.readFile(filePath, { encoding: "utf-8" });
@@ -86,7 +130,6 @@ async function asyncMain(filePath: string, options: any) {
 
         const outFile = `${filePath.replace(/\.scad/i, `-${moduleName}.stl`)}`;
         const args = getArgs(tempPath, outFile);
-        console.log(`Rendering ${moduleName} to ${outFile}...`);
         if (options.dry) {
             console.log(`${ospath} ${args.join(" ")}`);
         } else {
