@@ -176,18 +176,6 @@ async function asyncMain(filePath: string, options: any) {
         
         console.log(`Creating zip file: ${zipFileName}`);
         
-        // Create marketing text file
-        const marketingText = `Generated with scadr
-
-scadr is a tool for quickly rendering multiple high-quality STL files from a single OpenSCAD source.
-
-Learn more at: https://github.com/SeaRyanC/scadr
-
-Happy 3D printing! 🎯`;
-        
-        const marketingFile = path.join(tempDir, 'Generated with scadr.txt');
-        await fs.writeFile(marketingFile, marketingText, { encoding: 'utf-8' });
-        
         // Copy original scad file to temp directory
         const scadDestination = path.join(tempDir, path.basename(filePath));
         await fs.copyFile(filePath, scadDestination);
