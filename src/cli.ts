@@ -2,16 +2,20 @@
 
 import tmp = require("tmp");
 import fs = require("node:fs/promises");
+import fsSync = require("node:fs");
 import util = require("node:util");
 import path = require("node:path");
 import child_process = require("node:child_process");
 import commander = require("commander");
+import archiver = require("archiver");
 const { program } = commander;
 const execFile = util.promisify(child_process.execFile);
 
 interface Options {
     list: boolean;
     defines: string[];
+    zip: boolean;
+    images: boolean;
 }
 
 const conventions = {
@@ -27,6 +31,8 @@ program
     .addOption(new commander.Option('-c, --convention <kind>', 'top-level naming convention').choices(['auto', ...Object.keys(conventions)]).default("auto"))
     .option('-l, --list', `list modules without rendering`)
     .option('--dry', `dry run (show what would happen)`)
+    .option('--zip', `create zip file with all outputs`)
+    .option('--images', `generate images alongside STL files (requires --zip)`)
     .argument("<path>", `.scad file to render`)
     .action(main);
 program.parse();
@@ -39,6 +45,13 @@ async function asyncMain(filePath: string, options: any) {
     const fullPath = path.resolve(filePath);
     const ospath = await findOpenScad();
     const tasks: Promise<any>[] = [];
+    
+    // Validate options
+    if (options.images && !options.zip) {
+        console.error("Error: --images requires --zip option");
+        process.exit(1);
+    }
+    
     if (options.list) {
         console.log("Discovered modules:");
         for (const p of await getPartsToRender()) {
@@ -47,11 +60,25 @@ async function asyncMain(filePath: string, options: any) {
         return;
     }
 
+    // Create temp directory for zip mode
+    let tempDir: string | undefined;
+    let outputFiles: string[] = [];
+    
+    if (options.zip) {
+        tempDir = tmp.dirSync({ unsafeCleanup: true }).name;
+        console.log(`Using temporary directory: ${tempDir}`);
+    }
+
     const parts = options.module.length ? options.module : await getPartsToRender();
     for (const p of parts) {
         tasks.push(processModule(p));
     }
     for (const p of tasks) await p;
+    
+    if (options.zip && tempDir) {
+        await createZipFile(tempDir, outputFiles);
+    }
+    
     console.log(`Done!`);
 
     async function getPartsToRender(): Promise<string[]> {
@@ -84,14 +111,36 @@ async function asyncMain(filePath: string, options: any) {
         // Write out the temp file
         await fs.writeFile(tempPath, tempFileContents, { encoding: "utf-8" });
 
-        const outFile = `${filePath.replace(/\.scad/i, `-${moduleName}.stl`)}`;
-        const args = getArgs(tempPath, outFile);
+        let outFile: string;
+        if (options.zip && tempDir) {
+            // In zip mode, output to temp directory without scad filename prefix
+            outFile = path.join(tempDir, `${moduleName}.stl`);
+        } else {
+            // Normal mode - output to current directory with scad filename prefix
+            outFile = `${filePath.replace(/\.scad/i, `-${moduleName}.stl`)}`;
+        }
+        
+        outputFiles.push(outFile);
+        
+        let args = getArgs(tempPath, outFile);
         console.log(`Rendering ${moduleName} to ${outFile}...`);
         if (options.dry) {
             console.log(`${ospath} ${args.join(" ")}`);
         } else {
             await execFile(ospath, args);
         }
+        
+        // Generate image if requested
+        if (options.images && options.zip && tempDir) {
+            const imageFile = path.join(tempDir, `${moduleName}.png`);
+            const imageArgs = getImageArgs(tempPath, imageFile);
+            console.log(`Rendering image ${moduleName} to ${imageFile}...`);
+            if (!options.dry) {
+                await execFile(ospath, imageArgs);
+            }
+            outputFiles.push(imageFile);
+        }
+        
         await fs.unlink(tempPath);
     }
 
@@ -105,6 +154,65 @@ async function asyncMain(filePath: string, options: any) {
         }
         opts.push(inputFile);
         return opts;
+    }
+    
+    function getImageArgs(inputFile: string, outFile: string): string[] {
+        const opts = [
+            `--o`, outFile,
+            `--export-format`, 'png',
+            `--colorscheme`, 'BeforeDawn',
+            `--imgsize`, '1024,768'
+        ];
+        for (const def of options.define) {
+            opts.push('--D', def);
+        }
+        opts.push(inputFile);
+        return opts;
+    }
+    
+    async function createZipFile(tempDir: string, outputFiles: string[]) {
+        const scadBaseName = path.basename(filePath, '.scad');
+        const zipFileName = `${scadBaseName}.zip`;
+        
+        console.log(`Creating zip file: ${zipFileName}`);
+        
+        // Create marketing text file
+        const marketingText = `Generated with scadr
+
+scadr is a tool for quickly rendering multiple high-quality STL files from a single OpenSCAD source.
+
+Learn more at: https://github.com/SeaRyanC/scadr
+
+Happy 3D printing! 🎯`;
+        
+        const marketingFile = path.join(tempDir, 'Generated with scadr.txt');
+        await fs.writeFile(marketingFile, marketingText, { encoding: 'utf-8' });
+        
+        // Copy original scad file to temp directory
+        const scadDestination = path.join(tempDir, path.basename(filePath));
+        await fs.copyFile(filePath, scadDestination);
+        
+        // Create zip archive
+        const output = fsSync.createWriteStream(zipFileName);
+        const archive = archiver('zip', { zlib: { level: 9 } });
+        
+        return new Promise<void>((resolve, reject) => {
+            output.on('close', () => {
+                console.log(`Zip file created: ${zipFileName} (${archive.pointer()} total bytes)`);
+                resolve();
+            });
+            
+            archive.on('error', (err: any) => {
+                reject(err);
+            });
+            
+            archive.pipe(output);
+            
+            // Add all files from temp directory
+            archive.directory(tempDir, false);
+            
+            archive.finalize();
+        });
     }
 }
 
