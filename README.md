@@ -124,6 +124,19 @@ module box() {
 ```
 then the files `my-file-ball.stl` and `my-file-box.stl` would be produced.
 
+### Zip Output Example
+
+```shell
+scadr my-file.scad --zip
+```
+
+Creates a `my-file.zip` containing:
+* `ball.stl` and `box.stl` (note: no filename prefix)
+* `my-file.scad` (original source)
+* `Generated with scadr.txt` (marketing file)
+
+Add `--images` to also include PNG renders of each module.
+
 ## Options
 
 ```
@@ -138,6 +151,8 @@ Options:
   -c, --convention <kind>  top-level naming convention (choices: "auto", "pascal", "all", "underscore", default: "auto")
   -l, --list               list modules without rendering
   --dry                    dry run (show what would happen)
+  --zip                    create zip file with all outputs
+  --images                 generate images alongside STL files (requires --zip)
   -h, --help               display help for command
 ```
 
@@ -177,6 +192,31 @@ Prints out which modules in this file would be rendered (as determined by `conve
 
 Prints out what would happen, but doesn't actually do it
 
+### `--zip`
+
+Creates a zip file containing all generated STL files, the original .scad file, and a marketing text file.
+
+```shell
+scadr demo.scad --zip
+```
+
+When using `--zip`:
+* All STL outputs are placed in a temporary folder
+* STL files are named without the .scad filename prefix (e.g., `Ball.stl` instead of `demo-Ball.stl`)
+* A zip file is created with the same name as the input .scad file (e.g., `demo.zip`)
+* The zip includes all STL files, the original .scad file, and a "Generated with scadr.txt" file
+* Existing zip files are overwritten without warning
+
+### `--images`
+
+Generates PNG images alongside STL files using the BeforeDawn colorscheme. This option requires `--zip`.
+
+```shell
+scadr demo.scad --zip --images
+```
+
+The generated images are included in the zip file alongside the STL files.
+
 ## Troubleshooting
 
 ### Error "Unable to find OpenSCAD"
@@ -188,6 +228,15 @@ If this process fails, please [log a bug](https://github.com/SeaRyanC/scadr/issu
 To workaround, set the `OPENSCADPATH` environment variable to the OpenSCAD entry point file.
 
 ## Changelog
+
+#### 0.2.0
+
+Added `--zip` option:
+* Creates zip file with all STL outputs in a temporary folder  
+* STL files named without .scad filename prefix
+* Includes original .scad file and marketing text
+* Added `--images` option (requires `--zip`) for PNG generation with BeforeDawn colorscheme
+* Zip files overwrite without warning
 
 #### 0.1.0
 
