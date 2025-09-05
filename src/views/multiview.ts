@@ -2,6 +2,7 @@ import { createCanvas, Canvas, CanvasRenderingContext2D } from 'canvas';
 import { STLModel } from '../stl';
 import { 
     Vector3, 
+    Ray,
     OrthographicCamera, 
     createOrthographicCamera, 
     getRayForPixel 
@@ -22,9 +23,9 @@ export async function generateMultiview(
     models: STLModel[], 
     options: MultiviewOptions
 ): Promise<void> {
-    // Use smaller resolution for performance
-    const viewWidth = 400;
-    const viewHeight = 300;
+    // Final high resolution as requested (4x increase: 400x300 → 1600x1200)
+    const viewWidth = 1600;
+    const viewHeight = 1200;
     const totalWidth = viewWidth * 2;
     const totalHeight = viewHeight * 2;
     
@@ -53,7 +54,7 @@ export async function generateMultiview(
         bounds.max.y - bounds.min.y,
         bounds.max.z - bounds.min.z
     );
-    const scale = maxDimension / Math.min(viewWidth, viewHeight) * 1.2; // Add some padding
+    const scale = maxDimension / Math.min(viewWidth, viewHeight) * 2.0; // Increased padding to prevent clipping
     
     console.log(`Model bounds: min(${bounds.min.x.toFixed(2)}, ${bounds.min.y.toFixed(2)}, ${bounds.min.z.toFixed(2)}) max(${bounds.max.x.toFixed(2)}, ${bounds.max.y.toFixed(2)}, ${bounds.max.z.toFixed(2)})`);
     console.log(`Center: (${center.x.toFixed(2)}, ${center.y.toFixed(2)}, ${center.z.toFixed(2)}), Scale: ${scale.toFixed(2)}`);
@@ -69,16 +70,16 @@ export async function generateMultiview(
             canvasX: 0, 
             canvasY: 0 
         },
-        // 3/4 perspective view (upper-right)
+        // 3/4 perspective view from the top (upper-right)
         { 
             name: "perspective",
             position: { 
                 x: center.x + maxDimension * 1.5, 
                 y: center.y + maxDimension * 1.5, 
-                z: center.z + maxDimension * 1.5 
+                z: center.z + maxDimension * 2.0  // Higher up to look "from the top"
             },
             target: center,
-            up: { x: 0, y: 0, z: 1 },
+            up: { x: 0, y: 1, z: 0 },  // Change up vector for top-down view
             canvasX: viewWidth, 
             canvasY: 0 
         },
@@ -127,6 +128,9 @@ export async function generateMultiview(
         );
     }
     
+    // Add thick borders around different views for clarity
+    drawViewBorders(ctx, viewWidth, viewHeight);
+    
     // Save the image
     const fs = require('node:fs/promises');
     const buffer = canvas.toBuffer('image/png');
@@ -151,8 +155,8 @@ async function renderView(
     const startTime = Date.now();
     console.log(`  Starting ${width}x${height} render...`);
     
-    // Sample at lower resolution for speed
-    const step = 2; // Sample every 2nd pixel for speed
+    // Sample at optimized resolution for performance vs quality balance
+    const step = 2; // Sample every 2nd pixel for speed, but still enable outlines
     const totalPixels = Math.ceil(width / step) * Math.ceil(height / step);
     let processedPixels = 0;
     
@@ -165,14 +169,29 @@ async function renderView(
             let color: Vector3;
             
             if (hit) {
-                // Simple shading without expensive edge detection
-                color = calculateLighting(hit, scene, ray.direction);
+                // Check for outline/edge
+                const outline = detectOutline(
+                    ray, 
+                    scene, 
+                    x, 
+                    y, 
+                    width, 
+                    height, 
+                    (px, py) => getRayForPixel(camera, px, py, width, height)
+                );
+                
+                if (outline.isOutline) {
+                    // Thick black outline
+                    color = { x: 0, y: 0, z: 0 };
+                } else {
+                    color = calculateLighting(hit, scene, ray.direction);
+                }
             } else {
-                // Background with subtle grid
-                color = getBackgroundColor(x, y, width, height, scene.backgroundColor);
+                // Background with world-space aligned grid
+                color = getBackgroundColorWorldSpace(ray, scene.backgroundColor);
             }
             
-            // Fill a 2x2 block for the sampled pixel
+            // Fill a 2x2 block for the sampled pixel to maintain quality
             for (let dy = 0; dy < step && y + dy < height; dy++) {
                 for (let dx = 0; dx < step && x + dx < width; dx++) {
                     const pixelIndex = ((y + dy) * width + (x + dx)) * 4;
@@ -246,4 +265,73 @@ function getBackgroundColor(x: number, y: number, width: number, height: number,
     }
     
     return baseColor;
+}
+
+function getBackgroundColorWorldSpace(ray: Ray, baseColor: Vector3): Vector3 {
+    // Create grid aligned with world space z-plane
+    const gridSize = 1.0; // Grid every 1 unit in world space
+    const lineWidth = 0.05; // Line width in world units
+    
+    // Project ray to z=0 plane (ground plane)
+    if (Math.abs(ray.direction.z) < 0.001) {
+        // Ray is parallel to z-plane, no intersection
+        return baseColor;
+    }
+    
+    const t = -ray.origin.z / ray.direction.z;
+    if (t < 0) {
+        // Ray doesn't intersect z=0 plane in forward direction
+        return baseColor;
+    }
+    
+    const intersection = {
+        x: ray.origin.x + t * ray.direction.x,
+        y: ray.origin.y + t * ray.direction.y,
+        z: 0
+    };
+    
+    // Check if intersection point is on grid lines
+    const x = Math.abs(intersection.x % gridSize);
+    const y = Math.abs(intersection.y % gridSize);
+    
+    const onGridX = x < lineWidth || x > gridSize - lineWidth;
+    const onGridY = y < lineWidth || y > gridSize - lineWidth;
+    
+    if (onGridX || onGridY) {
+        // Slightly darker for grid lines
+        return {
+            x: baseColor.x * 0.85,
+            y: baseColor.y * 0.85,
+            z: baseColor.z * 0.85
+        };
+    }
+    
+    return baseColor;
+}
+
+function drawViewBorders(ctx: CanvasRenderingContext2D, viewWidth: number, viewHeight: number): void {
+    const borderThickness = 8; // Thick borders for clarity
+    
+    ctx.fillStyle = '#000000'; // Black borders
+    
+    // Vertical border between left and right views
+    const centerX = viewWidth;
+    ctx.fillRect(centerX - borderThickness/2, 0, borderThickness, viewHeight * 2);
+    
+    // Horizontal border between top and bottom views  
+    const centerY = viewHeight;
+    ctx.fillRect(0, centerY - borderThickness/2, viewWidth * 2, borderThickness);
+    
+    // Outer border around entire image
+    const totalWidth = viewWidth * 2;
+    const totalHeight = viewHeight * 2;
+    
+    // Top border
+    ctx.fillRect(0, 0, totalWidth, borderThickness);
+    // Bottom border
+    ctx.fillRect(0, totalHeight - borderThickness, totalWidth, borderThickness);
+    // Left border
+    ctx.fillRect(0, 0, borderThickness, totalHeight);
+    // Right border
+    ctx.fillRect(totalWidth - borderThickness, 0, borderThickness, totalHeight);
 }

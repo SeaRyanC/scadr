@@ -30,11 +30,19 @@ export function detectOutline(
         { x: pixelX + 1, y: pixelY },     // right
         { x: pixelX - 1, y: pixelY },     // left
         { x: pixelX, y: pixelY + 1 },     // down
-        { x: pixelX, y: pixelY - 1 }      // up
+        { x: pixelX, y: pixelY - 1 },     // up
+        { x: pixelX + 2, y: pixelY },     // right 2
+        { x: pixelX - 2, y: pixelY },     // left 2
+        { x: pixelX, y: pixelY + 2 },     // down 2
+        { x: pixelX, y: pixelY - 2 },     // up 2
+        { x: pixelX + 1, y: pixelY + 1 }, // diagonal
+        { x: pixelX - 1, y: pixelY - 1 }, // diagonal
+        { x: pixelX + 1, y: pixelY - 1 }, // diagonal
+        { x: pixelX - 1, y: pixelY + 1 }  // diagonal
     ];
     
-    const depthThreshold = 0.1;
-    const normalThreshold = 0.8;
+    const depthThreshold = 0.05; // More sensitive depth detection
+    const normalThreshold = 0.9;  // More sensitive normal detection
     
     for (const neighbor of neighbors) {
         // Check bounds
