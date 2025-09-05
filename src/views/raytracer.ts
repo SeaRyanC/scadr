@@ -88,10 +88,33 @@ export function calculateLighting(hit: RayHit, scene: Scene, rayDirection: Vecto
 }
 
 /**
- * Ray-triangle intersection using Möller-Trumbore algorithm
+ * Ray-triangle intersection using Möller-Trumbore algorithm with bounding box optimization
  */
 function intersectRayTriangle(ray: Ray, triangle: Triangle): RayHit | null {
     const [v0, v1, v2] = triangle.vertices.map(v => ({ x: v[0], y: v[1], z: v[2] }));
+    
+    // Quick bounding box check for early rejection
+    const minX = Math.min(v0.x, v1.x, v2.x);
+    const maxX = Math.max(v0.x, v1.x, v2.x);
+    const minY = Math.min(v0.y, v1.y, v2.y);
+    const maxY = Math.max(v0.y, v1.y, v2.y);
+    const minZ = Math.min(v0.z, v1.z, v2.z);
+    const maxZ = Math.max(v0.z, v1.z, v2.z);
+    
+    // Skip if ray origin is far from triangle bounds
+    if (ray.origin.x < minX - 1 || ray.origin.x > maxX + 1 ||
+        ray.origin.y < minY - 1 || ray.origin.y > maxY + 1 ||
+        ray.origin.z < minZ - 1 || ray.origin.z > maxZ + 1) {
+        // Only do this check if the ray direction wouldn't help
+        if ((ray.direction.x > 0 && ray.origin.x > maxX) ||
+            (ray.direction.x < 0 && ray.origin.x < minX) ||
+            (ray.direction.y > 0 && ray.origin.y > maxY) ||
+            (ray.direction.y < 0 && ray.origin.y < minY) ||
+            (ray.direction.z > 0 && ray.origin.z > maxZ) ||
+            (ray.direction.z < 0 && ray.origin.z < minZ)) {
+            return null;
+        }
+    }
     
     const edge1 = subtract(v1, v0);
     const edge2 = subtract(v2, v0);

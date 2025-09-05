@@ -138,6 +138,7 @@ Options:
   -c, --convention <kind>  top-level naming convention (choices: "auto", "pascal", "all", "underscore", default: "auto")
   -l, --list               list modules without rendering
   --dry                    dry run (show what would happen)
+  --multiview              generate multiview orthographic projection images
   -h, --help               display help for command
 ```
 
@@ -177,6 +178,28 @@ Prints out which modules in this file would be rendered (as determined by `conve
 
 Prints out what would happen, but doesn't actually do it
 
+### `--multiview`
+
+```shell
+scadr demo.scad --multiview
+```
+
+Generates a multiview orthographic projection image showing your 3D models from multiple angles. Creates a PNG file with a 2×2 grid layout:
+- **Top view** (upper-left): Looking down from above  
+- **Perspective view** (upper-right): 3/4 angled view
+- **Side view** (lower-left): Looking from the left side
+- **Front view** (lower-right): Looking from the front
+
+The multiview feature uses raytracing to render high-quality images with:
+- Pleasant green objects on a pale yellow background
+- Realistic lighting with shadows and atmospheric fog
+- Subtle background grid (10×10 cells)
+- Automatic camera positioning and scaling
+
+For performance, STL files are generated with reduced detail (`$fn=32`) specifically for multiview rendering, while preserving high-quality output for regular STL generation.
+
+**Example output:** `demo.scad` becomes `demo-multiview.png`
+
 ## Troubleshooting
 
 ### Error "Unable to find OpenSCAD"
@@ -188,6 +211,16 @@ If this process fails, please [log a bug](https://github.com/SeaRyanC/scadr/issu
 To workaround, set the `OPENSCADPATH` environment variable to the OpenSCAD entry point file.
 
 ## Changelog
+
+#### 0.2.0
+
+Added multiview orthographic projection feature:
+- New `--multiview` option generates 2×2 grid PNG images
+- Raytraced rendering with realistic lighting and atmospheric fog  
+- Four views: top, perspective, side, and front
+- Automatic STL parsing (binary and ASCII formats)
+- Performance-optimized with reduced detail for fast rendering
+- Pleasant green objects on pale yellow background with grid
 
 #### 0.1.0
 
