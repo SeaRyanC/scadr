@@ -9,7 +9,8 @@
     "strict": true,
     "skipDefaultLibCheck": true,
     "skipLibCheck": true,
-    "verbatimModuleSyntax": true,
-    "noUnusedLocals": false
+    "noUnusedLocals": false,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true
   }
 }

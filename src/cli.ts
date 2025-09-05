@@ -6,12 +6,15 @@ import util = require("node:util");
 import path = require("node:path");
 import child_process = require("node:child_process");
 import commander = require("commander");
+import { parseSTL } from "./stl";
+import { generateMultiview } from "./views/multiview";
 const { program } = commander;
 const execFile = util.promisify(child_process.execFile);
 
 interface Options {
     list: boolean;
     defines: string[];
+    multiview: boolean;
 }
 
 const conventions = {
@@ -27,6 +30,7 @@ program
     .addOption(new commander.Option('-c, --convention <kind>', 'top-level naming convention').choices(['auto', ...Object.keys(conventions)]).default("auto"))
     .option('-l, --list', `list modules without rendering`)
     .option('--dry', `dry run (show what would happen)`)
+    .option('--multiview', `generate multiview orthographic projection images`)
     .argument("<path>", `.scad file to render`)
     .action(main);
 program.parse();
@@ -48,10 +52,17 @@ async function asyncMain(filePath: string, options: any) {
     }
 
     const parts = options.module.length ? options.module : await getPartsToRender();
-    for (const p of parts) {
-        tasks.push(processModule(p));
+    
+    if (options.multiview) {
+        // Process multiview rendering
+        await processMultiview(parts);
+    } else {
+        // Standard STL rendering
+        for (const p of parts) {
+            tasks.push(processModule(p));
+        }
+        for (const p of tasks) await p;
     }
-    for (const p of tasks) await p;
     console.log(`Done!`);
 
     async function getPartsToRender(): Promise<string[]> {
@@ -93,6 +104,58 @@ async function asyncMain(filePath: string, options: any) {
             await execFile(ospath, args);
         }
         await fs.unlink(tempPath);
+    }
+
+    async function processMultiview(moduleNames: string[]) {
+        // First, render all modules to STL files
+        const stlFiles: string[] = [];
+        
+        for (const moduleName of moduleNames) {
+            const stlFile = `${filePath.replace(/\.scad/i, `-${moduleName}.stl`)}`;
+            stlFiles.push(stlFile);
+            
+            // Only render if file doesn't exist or in dry mode
+            if (options.dry) {
+                console.log(`Would render ${moduleName} to ${stlFile} for multiview`);
+            } else {
+                try {
+                    await fs.access(stlFile);
+                    console.log(`Using existing ${stlFile} for multiview...`);
+                } catch {
+                    // File doesn't exist, render it
+                    console.log(`Rendering ${moduleName} to ${stlFile} for multiview...`);
+                    await processModule(moduleName);
+                }
+            }
+        }
+        
+        if (!options.dry) {
+            // Parse STL files and generate multiview image
+            const models = [];
+            for (const stlFile of stlFiles) {
+                try {
+                    const model = await parseSTL(stlFile);
+                    models.push(model);
+                } catch (error) {
+                    console.warn(`Warning: Could not parse STL file ${stlFile}:`, error);
+                }
+            }
+            
+            if (models.length > 0) {
+                const outputImage = `${filePath.replace(/\.scad/i, '-multiview.png')}`;
+                console.log(`Generating multiview image: ${outputImage}...`);
+                
+                await generateMultiview(models, {
+                    width: 3200,
+                    height: 2400,
+                    outputPath: outputImage
+                });
+                
+                console.log(`Multiview image saved to ${outputImage}`);
+            } else {
+                console.error(`No valid STL files found for multiview rendering`);
+            }
+        }
     }
 
     function getArgs(inputFile: string, outFile: string): string[] {
