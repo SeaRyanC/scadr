@@ -155,7 +155,8 @@ async function findOpenScad() {
 function winpath(env: string, subfolder?: string) {
     const val = process.env[env];
     if (val) {
-        const folder = subfolder || "OpenSCAD";
+        const folder = subfolder ?? "OpenSCAD";
+
         return path.join(val, folder, "openscad.com");
     }
     return undefined;
