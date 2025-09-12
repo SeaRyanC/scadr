@@ -45,6 +45,7 @@ function main(filePath: string, options: Options) {
 async function asyncMain(filePath: string, options: any) {
     const fullPath = path.resolve(filePath);
     const ospath = await findOpenScad();
+    const supportsBackend = await checkBackendSupport(ospath);
     const tasks: Promise<any>[] = [];
     let dotCount = 0;
     if (options.list) {
@@ -143,6 +144,9 @@ async function asyncMain(filePath: string, options: any) {
             `--o`, outFile,
             `--export-format`, 'binstl'
         ];
+        if (supportsBackend) {
+            opts.push('--backend', 'manifold');
+        }
         for (const def of options.define) {
             opts.push('--D', def);
         }
@@ -151,10 +155,22 @@ async function asyncMain(filePath: string, options: any) {
     }
 }
 
+async function checkBackendSupport(openScadPath: string): Promise<boolean> {
+    try {
+        const { stdout } = await execFile(openScadPath, ['--help']);
+        return stdout.includes('--backend');
+    } catch {
+        // If help fails, assume no backend support
+        return false;
+    }
+}
+
 async function findOpenScad() {
     const candidateRoots = [
         process.env['OPENSCADPATH'],
-        // Windows
+        // Windows - prefer Nightly version
+        winpath('ProgramFiles', 'OpenSCAD (Nightly)'),
+        winpath('ProgramFiles(x86)', 'OpenSCAD (Nightly)'),
         winpath('ProgramFiles'),
         winpath('ProgramFiles(x86)'),
         // Mac
@@ -179,10 +195,12 @@ async function findOpenScad() {
     return process.exit(-1);
 }
 
-function winpath(env: string) {
+function winpath(env: string, subfolder?: string) {
     const val = process.env[env];
     if (val) {
-        return path.join(val, "OpenSCAD", "openscad.com");
+        const folder = subfolder ?? "OpenSCAD";
+
+        return path.join(val, folder, "openscad.com");
     }
     return undefined;
 }
