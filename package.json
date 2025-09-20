@@ -26,6 +26,8 @@
   },
   "homepage": "https://github.com/SeaRyanC/scadr#readme",
   "dependencies": {
+    "@types/archiver": "^6.0.3",
+    "archiver": "^7.0.1",
     "commander": "^10.0.1",
     "tmp": "^0.2.1"
   },

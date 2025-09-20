@@ -6,12 +6,14 @@ import util = require("node:util");
 import path = require("node:path");
 import child_process = require("node:child_process");
 import commander = require("commander");
+import archiver = require("archiver");
 const { program } = commander;
 const execFile = util.promisify(child_process.execFile);
 
 interface Options {
     list: boolean;
     defines: string[];
+    zip: boolean;
 }
 
 const conventions = {
@@ -27,6 +29,7 @@ program
     .addOption(new commander.Option('-c, --convention <kind>', 'top-level naming convention').choices(['auto', ...Object.keys(conventions)]).default("auto"))
     .option('-l, --list', `list modules without rendering`)
     .option('--dry', `dry run (show what would happen)`)
+    .option('--zip', `create a zip file with all outputs and original .scad file`)
     .argument("<path>", `.scad file to render`)
     .action(main);
 program.parse();
@@ -40,6 +43,9 @@ async function asyncMain(filePath: string, options: any) {
     const ospath = await findOpenScad();
     const supportsBackend = await checkBackendSupport(ospath);
     const tasks: Promise<any>[] = [];
+    let tempDir: string | null = null;
+    let stlFiles: string[] = [];
+    
     if (options.list) {
         console.log("Discovered modules:");
         for (const p of await getPartsToRender()) {
@@ -48,11 +54,26 @@ async function asyncMain(filePath: string, options: any) {
         return;
     }
 
+    // Create temporary directory for zip mode
+    if (options.zip) {
+        tempDir = tmp.dirSync({ unsafeCleanup: true }).name;
+    }
+
     const parts = options.module.length ? options.module : await getPartsToRender();
     for (const p of parts) {
         tasks.push(processModule(p));
     }
     for (const p of tasks) await p;
+    
+    // Create zip file if requested
+    if (options.zip && tempDir && !options.dry) {
+        await createZipFile(filePath, tempDir, stlFiles);
+    } else if (options.zip && options.dry) {
+        const baseName = path.basename(filePath, '.scad');
+        const zipPath = path.join(path.dirname(filePath), `${baseName}.zip`);
+        console.log(`Would create zip file: ${zipPath}`);
+    }
+    
     console.log(`Done!`);
 
     async function getPartsToRender(): Promise<string[]> {
@@ -85,13 +106,24 @@ async function asyncMain(filePath: string, options: any) {
         // Write out the temp file
         await fs.writeFile(tempPath, tempFileContents, { encoding: "utf-8" });
 
-        const outFile = `${filePath.replace(/\.scad/i, `-${moduleName}.stl`)}`;
+        let outFile: string;
+        if (options.zip && tempDir) {
+            // In zip mode, put STL files in temp directory without prefix
+            outFile = path.join(tempDir, `${moduleName}.stl`);
+        } else {
+            // Normal mode with prefix
+            outFile = `${filePath.replace(/\.scad/i, `-${moduleName}.stl`)}`;
+        }
+        
         const args = getArgs(tempPath, outFile);
         console.log(`Rendering ${moduleName} to ${outFile}...`);
         if (options.dry) {
             console.log(`${ospath} ${args.join(" ")}`);
         } else {
             await execFile(ospath, args);
+            if (options.zip) {
+                stlFiles.push(outFile);
+            }
         }
         await fs.unlink(tempPath);
     }
@@ -109,6 +141,40 @@ async function asyncMain(filePath: string, options: any) {
         }
         opts.push(inputFile);
         return opts;
+    }
+
+    async function createZipFile(scadFilePath: string, tempDir: string, stlFiles: string[]) {
+        const baseName = path.basename(scadFilePath, '.scad');
+        const zipPath = path.join(path.dirname(scadFilePath), `${baseName}.zip`);
+        
+        console.log(`Creating zip file: ${zipPath}...`);
+        
+        const output = require('node:fs').createWriteStream(zipPath);
+        const archive = archiver('zip', { zlib: { level: 9 } });
+        
+        return new Promise<void>((resolve, reject) => {
+            output.on('close', () => {
+                console.log(`Zip file created: ${zipPath} (${archive.pointer()} bytes)`);
+                resolve();
+            });
+            
+            archive.on('error', (err: any) => {
+                reject(err);
+            });
+            
+            archive.pipe(output);
+            
+            // Add all STL files
+            for (const stlFile of stlFiles) {
+                const fileName = path.basename(stlFile);
+                archive.file(stlFile, { name: fileName });
+            }
+            
+            // Add original .scad file
+            archive.file(scadFilePath, { name: path.basename(scadFilePath) });
+            
+            archive.finalize();
+        });
     }
 }
 
