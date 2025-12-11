@@ -38,10 +38,8 @@ export async function findOpenScad(): Promise<string> {
 
     for (const candidate of candidateRoots) {
         try {
-            const stat = await fs.stat(candidate, {})
-            if (await fs.stat(candidate)) {
-                return candidate;
-            }
+            await fs.stat(candidate);
+            return candidate;
         } catch {
             // Didn't exist; carry on
         }
