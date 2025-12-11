@@ -1,34 +1,19 @@
 #!/usr/bin/env node
 
-import tmp = require("tmp");
-import fs = require("node:fs/promises");
-import util = require("node:util");
-import path = require("node:path");
-import child_process = require("node:child_process");
-import commander = require("commander");
-import archiver = require("archiver");
-const { program } = commander;
-const execFile = util.promisify(child_process.execFile);
-
-interface Options {
-    list: boolean;
-    defines: string[];
-    zip: boolean;
-    beep: boolean;
-    dry: boolean;
-}
-
-const conventions = {
-    pascal: /^module ([A-Z]\w+)/gm,
-    all: /^module (\w+)/gm,
-    underscore: /^module ([^_]\w+)/gm
-} as const;
+import * as tmp from "tmp";
+import * as path from "node:path";
+import { program, Option } from "commander";
+import { conventions, type Options, type RenderContext } from "./types";
+import { findOpenScad, checkBackendSupport } from "./openscad";
+import { getPartsToRender } from "./modules";
+import { processModule } from "./renderer";
+import { createZipFile } from "./zip";
 
 program
     .name('scadr')
     .option('-d, --define <value>', `variable definitions`, collect, [])
     .option('-m, --module <name>', `specific module to render`, collect, [])
-    .addOption(new commander.Option('-c, --convention <kind>', 'top-level naming convention').choices(['auto', ...Object.keys(conventions)]).default("auto"))
+    .addOption(new Option('-c, --convention <kind>', 'top-level naming convention').choices(['auto', ...Object.keys(conventions)]).default("auto"))
     .option('-l, --list', `list modules without rendering`)
     .option('--dry', `dry run (show what would happen)`)
     .option('--zip', `create a zip file with all outputs and original .scad file`)
@@ -45,18 +30,17 @@ function main(filePath: string, options: Options) {
     });
 }
 
-async function asyncMain(filePath: string, options: any) {
+async function asyncMain(filePath: string, options: Options) {
     const fullPath = path.resolve(filePath);
     const ospath = await findOpenScad();
     const supportsBackend = await checkBackendSupport(ospath);
-    const tasks: Promise<any>[] = [];
     let tempDir: string | null = null;
     let stlFiles: string[] = [];
     
     let dotCount = 0;
     if (options.list) {
         console.log("Discovered modules:");
-        for (const p of await getPartsToRender()) {
+        for (const p of await getPartsToRender(filePath, options)) {
             console.log(` * ${p}`);
         }
         return;
@@ -67,16 +51,26 @@ async function asyncMain(filePath: string, options: any) {
         tempDir = tmp.dirSync({ unsafeCleanup: true }).name;
     }
 
-    const taskStatus: [name: string, done: boolean][] = [];
-    const parts = options.module.length ? options.module : await getPartsToRender();
+    const ctx: RenderContext = {
+        fullPath,
+        filePath,
+        ospath,
+        supportsBackend,
+        options,
+        tempDir,
+        stlFiles
+    };
 
-    return new Promise<void>(done => {
+    const taskStatus: [name: string, done: boolean][] = [];
+    const parts = options.module.length ? options.module : await getPartsToRender(filePath, options);
+
+    await new Promise<void>(done => {
         let timeoutToken: ReturnType<typeof setTimeout>;
 
         for (const p of parts) {
             const target: [string, boolean] = [p, false];
             taskStatus.push(target);
-            processModule(p).then(() => {
+            processModule(p, ctx).then(() => {
                 target[1] = true;
                 clearTimeout(timeoutToken);
                 recalc();
@@ -110,11 +104,10 @@ async function asyncMain(filePath: string, options: any) {
         }
         return allDone;
     }
-    for (const p of tasks) await p;
     
     // Create zip file if requested
     if (options.zip && tempDir && !options.dry) {
-        await createZipFile(filePath, tempDir, stlFiles);
+        await createZipFile(filePath, tempDir, ctx.stlFiles);
     } else if (options.zip && options.dry) {
         const baseName = path.basename(filePath, '.scad');
         const zipPath = path.join(path.dirname(filePath), `${baseName}.zip`);
@@ -122,156 +115,6 @@ async function asyncMain(filePath: string, options: any) {
     }
     
     console.log(`Done!`);
-
-    async function getPartsToRender(): Promise<string[]> {
-        const fileContent = await fs.readFile(filePath, { encoding: "utf-8" });
-
-        let modules;
-        if (options.convention === 'auto') {
-            const allModules = findModules(conventions.all);
-            const pascalModules = findModules(conventions.pascal);
-            const underscore = findModules(conventions.underscore);
-            if ((pascalModules.length > 0) && (pascalModules.length < allModules.length)) {
-                return pascalModules;
-            } else if ((underscore.length > 0) && (underscore.length < allModules.length)) {
-                return underscore;
-            } else {
-                return allModules;
-            }
-        }
-        return findModules(conventions[options.convention as keyof typeof conventions]);
-
-        function findModules(rgx: RegExp) {
-            return [...fileContent.matchAll(rgx)].map(g => g[1]);
-        }
-    }
-
-    async function processModule(moduleName: string) {
-        // Generate temp file contents
-        const tempPath = tmp.tmpNameSync({ postfix: ".scad" });
-        const tempFileContents = `// Generated by scadr\nuse <${fullPath}>\n${moduleName}();`;
-        // Write out the temp file
-        await fs.writeFile(tempPath, tempFileContents, { encoding: "utf-8" });
-
-        let outFile: string;
-        if (options.zip && tempDir) {
-            // In zip mode, put STL files in temp directory without prefix
-            outFile = path.join(tempDir, `${moduleName}.stl`);
-        } else {
-            // Normal mode with prefix
-            outFile = `${filePath.replace(/\.scad/i, `-${moduleName}.stl`)}`;
-        }
-        
-        const args = getArgs(tempPath, outFile);
-        if (options.dry) {
-            console.log(`${ospath} ${args.join(" ")}`);
-        } else {
-            await execFile(ospath, args);
-            if (options.zip) {
-                stlFiles.push(outFile);
-            }
-        }
-        await fs.unlink(tempPath);
-    }
-
-    function getArgs(inputFile: string, outFile: string): string[] {
-        const opts = [
-            `--o`, outFile,
-            `--export-format`, 'binstl'
-        ];
-        if (supportsBackend) {
-            opts.push('--backend', 'manifold');
-        }
-        for (const def of options.define) {
-            opts.push('--D', def);
-        }
-        opts.push(inputFile);
-        return opts;
-    }
-
-    async function createZipFile(scadFilePath: string, tempDir: string, stlFiles: string[]) {
-        const baseName = path.basename(scadFilePath, '.scad');
-        const zipPath = path.join(path.dirname(scadFilePath), `${baseName}.zip`);
-        
-        console.log(`Creating zip file: ${zipPath}...`);
-        
-        const output = require('node:fs').createWriteStream(zipPath);
-        const archive = archiver('zip', { zlib: { level: 9 } });
-        
-        return new Promise<void>((resolve, reject) => {
-            output.on('close', () => {
-                console.log(`Zip file created: ${zipPath} (${archive.pointer()} bytes)`);
-                resolve();
-            });
-            
-            archive.on('error', (err: any) => {
-                reject(err);
-            });
-            
-            archive.pipe(output);
-            
-            // Add all STL files
-            for (const stlFile of stlFiles) {
-                const fileName = path.basename(stlFile);
-                archive.file(stlFile, { name: fileName });
-            }
-            
-            // Add original .scad file
-            archive.file(scadFilePath, { name: path.basename(scadFilePath) });
-            
-            archive.finalize();
-        });
-    }
-}
-
-async function checkBackendSupport(openScadPath: string): Promise<boolean> {
-    try {
-        const { stdout } = await execFile(openScadPath, ['--help']);
-        return stdout.includes('--backend');
-    } catch {
-        // If help fails, assume no backend support
-        return false;
-    }
-}
-
-async function findOpenScad() {
-    const candidateRoots = [
-        process.env['OPENSCADPATH'],
-        // Windows - prefer Nightly version
-        winpath('ProgramFiles', 'OpenSCAD (Nightly)'),
-        winpath('ProgramFiles(x86)', 'OpenSCAD (Nightly)'),
-        winpath('ProgramFiles'),
-        winpath('ProgramFiles(x86)'),
-        // Mac
-        '/Applications/OpenSCAD.app/Contents/MacOS/OpenSCAD',
-        // Linux [?]
-        '/usr/bin/openscad'
-
-    ].filter(p => !!p) as string[];
-
-    for (const candidate of candidateRoots) {
-        try {
-            const stat = await fs.stat(candidate, {})
-            if (await fs.stat(candidate)) {
-                return candidate;
-            }
-        } catch {
-            // Didn't exist; carry on
-        }
-    }
-
-    console.error("Unable to find OpenSCAD; set OPENSCADPATH environment variable");
-    return process.exit(-1);
-}
-
-function winpath(env: string, subfolder?: string) {
-    const val = process.env[env];
-    if (val) {
-        const folder = subfolder ?? "OpenSCAD";
-
-        return path.join(val, folder, "openscad.com");
-    }
-    return undefined;
 }
 
 function collect(value: string, previous: string[]) {
