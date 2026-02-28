@@ -14,6 +14,7 @@ interface Options {
     defines: string[];
     beep: boolean;
     dry: boolean;
+    outDir?: string;
 }
 
 const conventions = {
@@ -29,6 +30,7 @@ program
     .addOption(new commander.Option('-c, --convention <kind>', 'top-level naming convention').choices(['auto', ...Object.keys(conventions)]).default("auto"))
     .option('-l, --list', `list modules without rendering`)
     .option('--dry', `dry run (show what would happen)`)
+    .option('--outDir <dir>', `output directory for STL files`)
     .option('-b, --beep', `chime when completed`)
     .argument("<path>", `.scad file to render`)
     .action(main);
@@ -129,7 +131,13 @@ async function asyncMain(filePath: string, options: any) {
         // Write out the temp file
         await fs.writeFile(tempPath, tempFileContents, { encoding: "utf-8" });
 
-        const outFile = `${filePath.replace(/\.scad/i, `-${moduleName}.stl`)}`;
+        let outFile = `${filePath.replace(/\.scad/i, `-${moduleName}.stl`)}`;
+        if (options.outDir) {
+            const fileName = path.basename(outFile);
+            outFile = path.join(options.outDir, fileName);
+            // Create output directory if it doesn't exist
+            await fs.mkdir(options.outDir, { recursive: true });
+        }
         const args = getArgs(tempPath, outFile);
         if (options.dry) {
             console.log(`${ospath} ${args.join(" ")}`);
