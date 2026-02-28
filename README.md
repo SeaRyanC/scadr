@@ -138,6 +138,7 @@ Options:
   -c, --convention <kind>  top-level naming convention (choices: "auto", "pascal", "all", "underscore", default: "auto")
   -l, --list               list modules without rendering
   --dry                    dry run (show what would happen)
+  --outDir <dir>           output directory for STL files
   -h, --help               display help for command
 ```
 
@@ -176,6 +177,14 @@ Prints out which modules in this file would be rendered (as determined by `conve
 ### `--dry`
 
 Prints out what would happen, but doesn't actually do it
+
+### `--outDir`
+
+By default, `.stl` files are written to the same directory as the input `.scad` file. If you want to change this, use `--outDir`:
+
+```shell
+scadr my-file.scad --outDir ./output
+```
 
 ## Troubleshooting
 
