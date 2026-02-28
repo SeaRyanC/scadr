@@ -5,7 +5,7 @@
     "rootDir": "./src",
     "outDir": "./lib",
     "lib": ["ESNext"],
-    "types": ["node"],
+    "types": ["node", "jest"],
     "forceConsistentCasingInFileNames": true,
     "strict": true,
     "skipDefaultLibCheck": true,

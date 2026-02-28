@@ -2,6 +2,13 @@ import * as fs from "node:fs/promises";
 import { conventions, type Options, type ConventionType } from "./types";
 
 /**
+ * Find modules in OpenSCAD file content using a regex pattern
+ */
+export function findModules(fileContent: string, rgx: RegExp): string[] {
+    return [...fileContent.matchAll(rgx)].map(g => g[1]);
+}
+
+/**
  * Get the list of modules to render from the .scad file
  */
 export async function getPartsToRender(filePath: string, options: Options): Promise<string[]> {
@@ -20,8 +27,4 @@ export async function getPartsToRender(filePath: string, options: Options): Prom
         }
     }
     return findModules(fileContent, conventions[options.convention as ConventionType]);
-}
-
-function findModules(fileContent: string, rgx: RegExp): string[] {
-    return [...fileContent.matchAll(rgx)].map(g => g[1]);
 }
