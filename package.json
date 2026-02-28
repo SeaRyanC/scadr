@@ -1,6 +1,6 @@
 {
   "name": "scadr",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Render multi-part OpenSCAD files to STL",
   "scripts": {
     "test": "jest",
