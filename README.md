@@ -196,8 +196,3 @@ scadr my-file.scad --outDir ./output
 If this process fails, please [log a bug](https://github.com/SeaRyanC/scadr/issues/new) describing your system configuration (operating system and the actual location of OpenSCAD).
 To workaround, set the `OPENSCADPATH` environment variable to the OpenSCAD entry point file.
 
-## Changelog
-
-#### 0.1.0
-
-First release
