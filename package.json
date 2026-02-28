@@ -6,6 +6,10 @@
     "test": "jest",
     "prepublishOnly": "tsc"
   },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "bin": {
     "scadr": "lib/cli.js"
   },
