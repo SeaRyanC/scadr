@@ -139,6 +139,7 @@ Options:
   -l, --list               list modules without rendering
   --dry                    dry run (show what would happen)
   --outDir <dir>           output directory for STL files
+  --zip                    create a zip file with all outputs and original .scad file
   -h, --help               display help for command
 ```
 
@@ -184,6 +185,20 @@ By default, `.stl` files are written to the same directory as the input `.scad` 
 
 ```shell
 scadr my-file.scad --outDir ./output
+```
+
+### `--zip`
+
+Creates a zip file containing all generated STL files along with the original `.scad` file. The zip file is named after the input file (e.g., `my-file.scad` produces `my-file.zip`).
+
+When using `--zip`:
+- STL files are stored in the zip without filename prefixes (e.g., `Ball.stl` instead of `my-file-Ball.stl`)
+- The original `.scad` file is included in the zip
+- Existing zip files are overwritten without warning
+
+```shell
+scadr demo.scad --zip
+# Creates demo.zip containing: Ball.stl, Box.stl, demo.scad
 ```
 
 ## Troubleshooting
